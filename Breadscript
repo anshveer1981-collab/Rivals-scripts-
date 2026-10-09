@@ -1,0 +1,233 @@
+-- ============================================================================
+--                   BREADS SKINCHANGER (YABUJIN INTEGRATED)
+-- ============================================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local playerScripts = player.PlayerScripts
+local controllers = playerScripts.Controllers
+local EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10))
+if EnumLibrary then EnumLibrary:WaitForEnumBuilder() end
+local CosmeticLibrary = require(ReplicatedStorage.Modules:WaitForChild("CosmeticLibrary", 10))
+local ItemLibrary = require(ReplicatedStorage.Modules:WaitForChild("ItemLibrary", 10))
+local DataController = require(controllers:WaitForChild("PlayerDataController", 10))
+local equipped, favorites = {}, {}
+local constructingWeapon, viewingProfile = nil, nil
+local lastUsedWeapon = nil
+
+-- Global rarity override setting (can be "None", "Prime", or "Contraband")
+local activeRarityOverride = "None"
+
+-- ============================================================================
+-- [YABUJIN CORE RETRO UI BUILDER]
+-- ============================================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BreadsSkinchangerUI"
+ScreenGui.ResetOnSpawn = false
+local success, err = pcall(function() ScreenGui.Parent = CoreGui end)
+if not success then ScreenGui.Parent = player:WaitForChild("PlayerGui") end
+
+-- Main Frame (Yabujincore Dark Webcore Aesthetic)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 340, 0, 240)
+MainFrame.Position = UDim2.new(0.5, -170, 0.4, -120)
+MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+MainFrame.BorderColor3 = Color3.fromRGB(150, 0, 255) -- Deep Ether Purple border
+MainFrame.BorderSizePixel = 2
+MainFrame.Active = true
+MainFrame.Draggable = true 
+MainFrame.Parent = ScreenGui
+
+-- Top Bar Title Window Accent
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 25)
+TopBar.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+TopBar.BorderColor3 = Color3.fromRGB(150, 0, 255)
+TopBar.BorderSizePixel = 1
+TopBar.Parent = MainFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, -10, 1, 0)
+TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "★ breads skinchanger 𓆙"
+TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+TitleLabel.TextSize = 13
+TitleLabel.Font = Enum.Font.Code
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TopBar
+
+-- UI Status Framework Display
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, -20, 1, -45)
+ContentFrame.Position = UDim2.new(0, 10, 0, 35)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Size = UDim2.new(1, 0, 0, 20)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "ALL WEAPONS & EMOTES: UNLOCKED"
+StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 130) -- Neon Terminal Green
+StatusLabel.TextSize = 12
+StatusLabel.Font = Enum.Font.Code
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+StatusLabel.Parent = ContentFrame
+
+-- Rarity Label Instruction
+local RarityLabel = Instance.new("TextLabel")
+RarityLabel.Name = "RarityLabel"
+RarityLabel.Size = UDim2.new(1, 0, 0, 20)
+RarityLabel.Position = UDim2.new(0, 0, 0, 25)
+RarityLabel.BackgroundTransparency = 1
+RarityLabel.Text = "WEAPON STATUS OVERRIDE:"
+RarityLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
+RarityLabel.TextSize = 11
+RarityLabel.Font = Enum.Font.Code
+RarityLabel.TextXAlignment = Enum.TextXAlignment.Center
+RarityLabel.Parent = ContentFrame
+
+-- Rarity Buttons Layout
+local ButtonContainer = Instance.new("Frame")
+ButtonContainer.Name = "ButtonContainer"
+ButtonContainer.Size = UDim2.new(1, 0, 0, 35)
+ButtonContainer.Position = UDim2.new(0, 0, 0, 50)
+ButtonContainer.BackgroundTransparency = 1
+ButtonContainer.Parent = ContentFrame
+
+local optNone = Instance.new("TextButton")
+local optPrime = Instance.new("TextButton")
+local optContra = Instance.new("TextButton")
+
+local function styleButton(btn, text, posX)
+    btn.Size = UDim2.new(0.3, 0, 1, 0)
+    btn.Position = UDim2.new(posX, 0, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    btn.BorderColor3 = Color3.fromRGB(80, 80, 90)
+    btn.BorderSizePixel = 1
+    btn.Font = Enum.Font.Code
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.TextSize = 11
+    btn.Parent = ButtonContainer
+end
+
+styleButton(optNone, "NONE", 0)
+styleButton(optPrime, "PRIME", 0.35)
+styleButton(optContra, "CONTRABAND", 0.7)
+
+-- Handle Dynamic Highlights
+local function updateButtonHighlights()
+    optNone.BorderColor3 = (activeRarityOverride == "None") and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(80, 80, 90)
+    optPrime.BorderColor3 = (activeRarityOverride == "Prime") and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(80, 80, 90)
+    optContra.BorderColor3 = (activeRarityOverride == "Contraband") and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(80, 80, 90)
+    
+    optNone.TextColor3 = (activeRarityOverride == "None") and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(200, 200, 200)
+    optPrime.TextColor3 = (activeRarityOverride == "Prime") and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(200, 200, 200)
+    optContra.TextColor3 = (activeRarityOverride == "Contraband") and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(200, 200, 200)
+end
+updateButtonHighlights()
+
+optNone.MouseButton1Click:Connect(function() activeRarityOverride = "None" updateButtonHighlights() saveConfig() end)
+optPrime.MouseButton1Click:Connect(function() activeRarityOverride = "Prime" updateButtonHighlights() saveConfig() end)
+optContra.MouseButton1Click:Connect(function() activeRarityOverride = "Contraband" updateButtonHighlights() saveConfig() end)
+
+local InstructionLabel = Instance.new("TextLabel")
+InstructionLabel.Name = "InstructionLabel"
+InstructionLabel.Size = UDim2.new(1, 0, 0, 45)
+InstructionLabel.Position = UDim2.new(0, 0, 0, 100)
+InstructionLabel.BackgroundTransparency = 1
+InstructionLabel.Text = "All skins, weapons, and emotes completely spoofed.\nPress [ RightShift ] to minimize menu canvas."
+InstructionLabel.TextColor3 = Color3.fromRGB(130, 130, 140)
+InstructionLabel.TextSize = 11
+InstructionLabel.Font = Enum.Font.Code
+InstructionLabel.TextWrapped = true
+InstructionLabel.TextXAlignment = Enum.TextXAlignment.Center
+InstructionLabel.Parent = ContentFrame
+
+-- Toggle Handler (State Persistence Controller)
+local uiToggled = true
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+        uiToggled = not uiToggled
+        MainFrame.Visible = uiToggled
+    end
+end)
+
+-- ============================================================================
+-- [INTERNAL SKINCHANGER SYSTEM LOGIC ARCHITECTURE]
+-- ============================================================================
+
+local function cloneCosmetic(name, cosmeticType, options)
+    local base = CosmeticLibrary.Cosmetics[name]
+    if not base then return nil end
+    local data = {}
+    for key, value in pairs(base) do data[key] = value end
+    data.Name = name
+    data.Type = data.Type or cosmeticType
+    data.Seed = data.Seed or math.random(1, 1000000)
+    if EnumLibrary then
+        local success, enumId = pcall(EnumLibrary.ToEnum, EnumLibrary, name)
+        if success and enumId then data.Enum, data.ObjectID = enumId, data.ObjectID or enumId end
+    end
+    if options then
+        if options.inverted ~= nil then data.Inverted = options.inverted end
+        if options.favoritesOnly ~= nil then data.OnlyUseFavorites = options.favoritesOnly end
+    end
+    return data
+end
+
+local saveFile = "Rivals-Skinchanger/skins.txt"
+local function saveConfig()
+    if not writefile then return end
+    pcall(function()
+        local config = {equipped = {}, favorites = favorites, rarityOverride = activeRarityOverride}
+        for weapon, cosmetics in pairs(equipped) do
+            config.equipped[weapon] = {}
+            for cosmeticType, cosmeticData in pairs(cosmetics) do
+                if cosmeticData and cosmeticData.Name then
+                    config.equipped[weapon][cosmeticType] = {
+                        name = cosmeticData.Name, seed = cosmeticData.Seed, inverted = cosmeticData.Inverted
+                    }
+                end
+            end
+        end
+        makefolder("Rivals-Skinchanger")
+        writefile(saveFile, HttpService:JSONEncode(config))
+    end)
+end
+
+local function loadConfig()
+    if not readfile or not isfile or not isfile(saveFile) then return end
+    pcall(function()
+        local config = HttpService:JSONDecode(readfile(saveFile))
+        if config.equipped then
+            for weapon, cosmetics in pairs(config.equipped) do
+                equipped[weapon] = {}
+                for cosmeticType, cosmeticData in pairs(cosmetics) do
+                    local cloned = cloneCosmetic(cosmeticData.name, cosmeticType, {inverted = cosmeticData.inverted})
+                    if cloned then cloned.Seed = cosmeticData.seed equipped[weapon][cosmeticType] = cloned end
+                end
+            end
+        end
+        favorites = config.favorites or {}
+        if config.rarityOverride then 
+            activeRarityOverride = config.rarityOverride 
+            updateButtonHighlights()
+        end
+    end)
+end
+
+local function isFinisher(cosmetic)
+    if not cosmetic then return false end
+    local t = cosmetic.Type
